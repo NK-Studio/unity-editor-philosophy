@@ -140,6 +140,8 @@ namespace MyTool.UI
     align-items: center;
     height: var(--ctl-h);
     padding: 0 var(--space-2);
+    /* 6.7 이상: 자식 사이 간격은 gap. 그 아래 버전은 자식 margin 으로. */
+    column-gap: var(--space-1);
     background-color: var(--color-field-bg);
     border-width: 1px;
     border-color: var(--color-field-border);
@@ -303,7 +305,9 @@ public class MyAssetInspector : Editor
 - 컴포넌트 USS 는 **자기 클래스만** 건드린다. 자식 컴포넌트 내부 클래스를 덮어쓰지 않는다. 바꿔야 하면 그 컴포넌트에 변형 클래스(`--compact` 등)를 만든다.
 - Unity 내장 컨트롤의 내부 클래스(`.unity-text-field__input` 등)를 덮어쓸 때는 반드시 자기 블록 아래로 한정한다(`.search-field .unity-text-field__input`).
 - `!important` 는 쓰지 않는다.
-- USS 는 CSS 의 부분집합이다. `:focus-within`, `:nth-child`, `::before`, `calc()`, `gap`, `box-shadow` 는 없다. 쓰기 전에 지원 여부를 확인한다.
+- 전환(transition)은 `translate` · `scale` · `rotate` · 색 · `opacity` 에만 건다. 레이아웃 속성(`width`, `left`, `margin`)에 걸면 매 프레임 레이아웃을 다시 계산한다. 전환은 `:hover` 규칙이 아니라 **기본 규칙**에 둔다(그래야 마우스가 떠날 때도 돌아가는 전환이 생긴다).
+- 그림자는 `box-shadow` 가 아니라 `filter: drop-shadow(...)` 다(Unity 6.6 이상). 그 아래 버전은 9-slice 그림자 이미지를 깔거나 그림자를 생략한다.
+- 떠 있는 패널 뒤 흐림(frosted glass)은 `backdrop-filter`(Unity 6.6 이상)다. 런타임 URP 전용으로 문서화되어 있으니 **에디터 창에서 쓰려면 먼저 그 버전에서 동작을 확인**하고, 안 되면 반투명 배경색만으로 대신한다.
 
 ### 테마 변수
 
@@ -324,7 +328,76 @@ public class MyAssetInspector : Editor
 ```
 
 - 테마는 `EditorGUIUtility.isProSkin` 으로 고른 한 장만 루트에 붙인다(4절 `ApplyTheme`).
+- `var(--x, 기본값)` 처럼 두 번째 인자로 기본값을 줄 수 있다. 변수를 지웠는데 참조가 남아 있을 때를 대비해 테마 밖에서 쓰는 변수에는 기본값을 둔다.
+- 변수를 다른 함수 안에 넣을 수 없다(`rgba(var(--r), 0, 0, 1)` 불가). 변수끼리 연산도 안 된다. 필요한 조합은 테마에서 변수 하나로 미리 만든다.
 - 에디터 기본 색과 맞춰야 하는 곳(배경·구분선)은 Unity 기본 테마 변수 `--unity-colors-*` 를 우리 변수에 대입해 쓴다. 컴포넌트가 `--unity-colors-*` 를 직접 쓰지는 않는다.
+
+### USS 지원 범위 (Unity 6 기준)
+
+USS 는 CSS 의 부분집합이다. 아래 표 밖의 CSS 를 쓰기 전에 그 버전의 [USS 속성 레퍼런스](https://docs.unity.com/en-us/engine/6000.7/manual/uitoolkits/uielements/uie-uss/properties/reference)에서 확인한다. **프로젝트의 최소 Unity 버전을 정하고, 그보다 늦게 생긴 기능은 쓰지 않는다.**
+
+**선택자·의사 클래스**
+
+| 되는 것 | 안 되는 것 |
+|---|---|
+| 타입 `Button`, 이름 `#name`, 클래스 `.class`, 전체 `*` | 속성 선택자 `[attr]` |
+| 자손 ` `, 자식 `>`, 복합 `Button.a#b`, 목록 `,` | 형제 `+` `~` |
+| `:hover` `:active` `:inactive` `:focus` `:disabled` `:enabled` `:checked` `:root` | `:focus-within` `:first-child` `:nth-child` `:not()` `:has()` `:selected`(→ `:checked`) |
+| | 의사 요소 `::before` `::after` |
+
+컨테이너의 포커스나 "n번째 줄" 같은 상태는 C# 에서 클래스를 켜고 끈다.
+
+**값·함수**
+
+| 되는 것 | 안 되는 것 |
+|---|---|
+| `var(--x)`, `var(--x, 기본값)` | 함수 안의 `var()`, 변수 연산 |
+| `url("경로")`(USS 파일 기준 상대 경로, `project:/` 절대 경로) | `calc()` |
+| `resource("이름")`, `resource("경로#서브에셋")`(6.4 이상) | |
+| `rgb()` `rgba()` `#hex`, 색 이름 | |
+| `linear-gradient()` `radial-gradient()` (`background-image`, 6.7 이상) | |
+| 단위 `px` `%` `deg` `grad` `rad` `turn` `s` `ms` | `em` `rem` `vw` `vh` |
+
+**속성 (항상 되는 것)**
+
+| 묶음 | 속성 |
+|---|---|
+| 상자 | `width` `height` `min-*` `max-*` `margin*` `padding*` `border-*-width` |
+| flex | `flex-direction` `flex-wrap` `flex-grow` `flex-shrink` `flex-basis` `flex` `align-items` `align-self` `align-content` `justify-content` |
+| 위치 | `position`(`relative` \| `absolute`) `left` `top` `right` `bottom` |
+| 배경·테두리 | `background-color` `background-image` `-unity-background-scale-mode` `-unity-background-image-tint-color` `border-color` `border-*-color` `border-radius` `border-*-radius` `-unity-slice-*` |
+| 표시 | `display`(`flex` \| `none`) `visibility` `overflow` `opacity` `cursor` |
+| 글자 | `color` `font-size` `white-space` `letter-spacing` `word-spacing` `text-overflow` `text-shadow` `-unity-font` `-unity-font-definition` `-unity-font-style` `-unity-text-align` `-unity-text-outline*` `-unity-paragraph-spacing` |
+| 변형 | `translate` `rotate` `scale` `transform-origin` (적용 순서 scale → rotate → translate) |
+| 전환 | `transition-property` `transition-duration` `transition-timing-function` `transition-delay` `transition` (easing: `ease*`, `linear`, `ease-in-out-sine/cubic/circ/elastic/back/bounce` 등) |
+
+**버전에 따라 생긴 것**
+
+| 기능 | 버전 | 메모 |
+|---|---|---|
+| `aspect-ratio`, `-unity-text-auto-size` | 6.3 | |
+| `filter`: `blur()` `grayscale()` `invert()` `opacity()` `sepia()` `tint()` `hue-rotate()` `contrast()` `brightness()` `saturate()` | 6.3 | 한 선언 안의 함수는 순서대로 파이프라인. 클래스 두 개가 각각 `filter` 를 주면 마지막 것만 적용(합쳐지지 않음). 요소 서브트리를 텍스처로 그려 처리하므로 큰 영역·많은 요소에는 아낀다 |
+| `filter: drop-shadow(x y blur color)` | 6.6 | 렌더된 모양(투명 영역 포함)을 따라가는 그림자. 여러 개 겹치기 가능. 6.6~6.7 베타에서 자식까지 흐려지는 버그 보고가 있어 그림자는 **내용이 없는 별도 요소**에 거는 편이 안전 |
+| `backdrop-filter` | 6.6 | 요소 뒤를 흐림·틴트. URP 와 screen-space 패널 전용, 전환 불가, 한 요소에 하나만. 에디터 창 지원은 확인 후 사용 |
+| `gap` `row-gap` `column-gap` | 6.7 | flex 자식 사이 간격. 그 아래 버전은 자식 `margin` 으로 |
+| `z-index` | 6.7 | 같은 스태킹 컨텍스트 안 겹침 순서 |
+| `linear-gradient()` `radial-gradient()` | 6.7 | `background-image` 값 |
+| `display: grid` 와 `grid-*` | 6.7 실험 | Project Settings > UI Toolkit 에서 켜야 한다. 안정화 전에는 쓰지 않는다 |
+| `-unity-curvature` | 6.7 실험 | 곡면 UI, 런타임용 |
+
+**없는 것 (대안)**
+
+| CSS | 대안 |
+|---|---|
+| `box-shadow` | `filter: drop-shadow()`(6.6+) 또는 9-slice 그림자 이미지 |
+| `gap`(6.7 미만) | 자식 `margin-right` / `margin-bottom`, 마지막 자식은 C# 또는 `--last` 클래스로 0 |
+| `:focus-within` | C# `FocusInEvent` / `FocusOutEvent` 로 클래스 토글 |
+| `:nth-child`, `:first-child`, `:last-child` | 생성할 때 C# 에서 `--odd` `--first` `--last` 클래스 부여 |
+| `::before` / `::after` | UXML 에 실제 자식 요소 추가 |
+| `calc()`, 변수 연산 | 테마에서 계산된 값을 변수 하나로 정의 |
+| `em` `rem` `vw` `vh` | `px` 와 `%`, 배율은 루트 `scale` 또는 변수로 |
+| `text-transform`, `line-height` | 없음. 글자 간격은 `letter-spacing`, 줄 간격은 `-unity-paragraph-spacing` 으로 일부 대체 |
+| `grid`(안정판) | flex 중첩 또는 `MultiColumnListView` |
 
 ## 7. 작업 순서
 
@@ -351,7 +424,9 @@ public class MyAssetInspector : Editor
 | 목록을 `foreach` 로 돌며 `Add(new Row())` | `ListView` 의 `makeItem` / `bindItem` |
 | Inspector 에서 `serializedObject.FindProperty(...).intValue` 를 읽어 Label 에 써 넣기 | `binding-path` + `Bind()` |
 | 클래스 이름 `.title`, `.row` 처럼 범용 이름 | `.card__title`, `.list__row` 처럼 블록 이름을 붙이기 |
-| USS 에 `:focus-within`, `gap`, `calc()` | 지원 목록 확인 후 C# 클래스 토글이나 margin 으로 |
+| CSS 에서 쓰던 속성을 확인 없이 USS 에 적기(`box-shadow`, `:nth-child`, `calc()`) | 6절 지원 범위 표에서 확인하고 대안으로 |
+| 프로젝트 최소 버전보다 늦게 생긴 USS 기능(`gap`, `backdrop-filter`)을 쓰기 | 최소 버전을 정하고 그 안에서만. 필요하면 버전을 올리는 결정을 먼저 |
+| `width`, `left` 에 `transition` 걸기 | `translate` `scale` `opacity` 색에만 |
 
 ## 9. 마무리 점검
 
@@ -365,6 +440,7 @@ public class MyAssetInspector : Editor
 - [ ] `name` · 클래스 문자열이 C# 상수로 모여 있다
 - [ ] Inspector·Drawer 의 값은 `binding-path` 로 잇는다
 - [ ] 목록은 `ListView` 를 쓴다
-- [ ] 쓴 USS 속성과 의사 클래스가 UI Toolkit 에서 지원되는 것이다
+- [ ] 쓴 USS 속성·의사 클래스·함수가 6절 지원 범위 표에 있고, 프로젝트 최소 Unity 버전에서 되는 것이다
+- [ ] 전환은 `translate` `scale` `rotate` 색 `opacity` 에만 걸었다
 - [ ] Editor 전용 asmdef 안에 있다
 - [ ] 다크·라이트 테마 둘 다에서 확인했다
